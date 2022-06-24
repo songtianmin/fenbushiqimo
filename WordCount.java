@@ -1,52 +1,46 @@
-package cn.edu.ecnu.flink.example.java.wordcount;
+package cn.edu.ecnu.mapreduce.example.java.wordcount;
 
-import org.apache.flink.api.common.functions.FlatMapFunction;
-import org.apache.flink.api.common.functions.MapFunction;
-import org.apache.flink.api.java.tuple.Tuple2;
-import org.apache.flink.streaming.api.datastream.DataStream;
-import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.util.Collector;
+import org.apache.hadoop.conf.Configured;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.IntWritable;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Job;
+import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
+import org.apache.hadoop.util.Tool;
+import org.apache.hadoop.util.ToolRunner;
 
-import java.util.Arrays;
+public class WordCount extends Configured implements Tool {
 
-public class WordCount {
-    public static void main(String[] args) throws Exception {
-        run(args);
+    @Override
+    public int run(String[] args) throws Exception {
+        /* 步骤1：设置作业的信息 */
+        Job job = Job.getInstance(getConf(), getClass().getSimpleName());
+        // 设置程序的类名
+        job.setJarByClass(getClass());
+
+        // 设置数据的输入输出路径
+        FileInputFormat.addInputPath(job, new Path(args[0]));
+        FileOutputFormat.setOutputPath(job, new Path(args[1]));
+
+        // 设置map和reduce方法
+        job.setMapperClass(WordCountMapper.class);
+        job.setReducerClass(WordCountReducer.class);
+        job.setCombinerClass(WordCountReducer.class);
+
+        // 设置map方法的输出键值对数据类型
+        job.setMapOutputKeyClass(Text.class);
+        job.setMapOutputValueClass(IntWritable.class);
+        // 设置reduce方法的输出键值对数据类型
+        job.setOutputKeyClass(Text.class);
+        job.setOutputValueClass(IntWritable.class);
+
+        return job.waitForCompletion(true) ? 0 : 1;
     }
 
-    public static void run(String[] args) throws Exception {
-        /* 步骤1：创建StreamExecutionEnvironment对象 */
-        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
-
-        /* 步骤2：按应用逻辑使用操作算子编写DAG，操作算子包括数据源、转换、数据池等 */
-        // 从指定的主机名和端口号接收数据，创建名为lines的DataStream|
-        DataStream<String> lines = env.readTextFile(args[0]);
-
-        // 将lines中的每一个文本行按空格分割成单个单词
-        DataStream<String> words =
-                lines.flatMap(
-                        new FlatMapFunction<String, String>() {
-                            @Override
-                            public void flatMap(String value, Collector<String> out) throws Exception {
-                                for (String word : value.split(" ")) {
-                                    out.collect(word);
-                                }
-                            }
-                        });
-        // 将每个单词的频数设置为1，即将每个单词映射为[单词, 1]
-        DataStream<Tuple2<String, Integer>> pairs =
-                words.map(
-                        new MapFunction<String, Tuple2<String, Integer>>() {
-                            @Override
-                            public Tuple2<String, Integer> map(String value) throws Exception {
-                                return new Tuple2<String, Integer>(value, 1);
-                            }
-                        });
-        // 按单词聚合，并对相同单词的频数使用sum进行累计
-        DataStream<Tuple2<String, Integer>> counts = pairs.keyBy(0).sum(1);
-        // 输出词频统计结果|
-
-        /* 步骤3：触发程序执行 */
-        env.execute("Streaming WordCount");
+    public static void main(String[] args) throws Exception {
+        /* 步骤2：运行作业 */
+        int exitCode = ToolRunner.run(new WordCount(), args);
+        System.exit(exitCode);
     }
 }
